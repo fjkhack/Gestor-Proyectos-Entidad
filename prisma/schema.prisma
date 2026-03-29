@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 1. Proyectos
+model Project {
+  id              String   @id @default(uuid())
+  title           String
+  idea            String?
+  need            String?
+  objectives      String?
+  status          String   @default("IDEA") // IDEA, EN_PROCESO, COMPLETADO, CANCELADO
+  budget          Float?   // Presupuesto estimado
+  
+  // 2. Calendario y Fechas
+  callDate        DateTime? // Convocatoria
+  presentationDate DateTime? // Presentación
+  resolutionDate  DateTime? // Resolución
+  startDate       DateTime? // Inicio
+  endDate         DateTime? // Fin
+  publicityDate   DateTime? // Publicidad
+  justificationDate DateTime? // Justificación
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relaciones
+  actions             Action[]
+  participants        Participant[] // DEPRECATED: Se mantendrá temporalmente hasta migrar UX a ProjectParticipant
+  projectParticipants ProjectParticipant[]
+  expenses            Expense[]
+  documents           Document[]
+  incomes             Income[]
+  ventas              Venta[]
+  compras             Compra[]
+}
+
+// 3. Acciones (Tareas)
+model Action {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  date        DateTime?
+  completed   Boolean  @default(false)
+  
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Asignación de participante
+  participantId String?
+  participant   Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+}
+
+// 4. Participantes (ALERTA: Obsoleto, migrando hacia Contact + ProjectParticipant)
+model Participant {
+  id          String   @id @default(uuid())
+  name        String
+  role        String   // PROFESIONAL, VOLUNTARIO, ENTIDAD_COLABORADORA
+  email       String?
+  phone       String?
+
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  actions     Action[] // Tareas asignadas a este participante
+}
+
+// 5. Gastos
+model Expense {
+  id          String   @id @default(uuid())
+  concept     String
+  amount      Float
+  date        DateTime
+  invoiceNum  String?
+  category    String   @default("OTRO") // PERSONAL, MATERIAL, SERVICIOS, TRANSPORTE, ALQUILER, COMUNICACION, OTRO
+
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// 6. Documentación
+model Document {
+  id          String   @id @default(uuid())
+  name        String
+  url         String   // Enlace o ruta del archivo
+  uploadDate  DateTime @default(now())
+
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// 7. Ingresos y Aportaciones
+model Income {
+  id            String   @id @default(uuid())
+  concept       String
+  amount        Float
+  date          DateTime
+  type          String   // SUBVENCION, COLABORACION, VENTA, OTRO
+  contributor   String?  // Persona/entidad que lo aporta
+
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// NUEVOS MÓDULOS PARA LA INTEGRACIÓN
+// ============================================
+
+// --- MÓDULO: CONTACTOS CENTRALIZADOS ---
+model Contact {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
+  nif       String?
+  type      String   @default("PERSONA") // PERSONA, ENTIDAD
+  notes     String?
+  createdAt DateTime @default(now())
+
+  // Relaciones
+  participations ProjectParticipant[]
+  ventas         Venta[]
+  compras        Compra[]
+}
+
+model ProjectParticipant {
+  id          String   @id @default(uuid())
+  projectId   String
+  contactId   String
+  role        String   // PROFESIONAL, VOLUNTARIO, ENTIDAD_COLABORADORA
+  createdAt   DateTime @default(now())
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, contactId])
+}
+
+// --- MÓDULO: MERCHANDISING / TIENDA ---
+model Categoria {
+  id        String     @id @default(uuid())
+  nombre    String     @unique
+  createdAt DateTime   @default(now())
+  productos Producto[]
+}
+
+model Producto {
+  id             String          @id @default(uuid())
+  nombre         String
+  categoriaId    String
+  precioVenta    Float
+  precioCompra   Float           @default(0)
+  stockActual    Int             @default(0)
+  imagen         String?
+  createdAt      DateTime        @default(now())
+  
+  categoria      Categoria       @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  comprasDetalle DetalleCompra[]
+  ventasDetalle  DetalleVenta[]
+}
+
+model Compra {
+  id          String          @id @default(uuid())
+  fecha       DateTime        @default(now())
+  contactId   String          // Sustituye a proveedor String
+  notas       String?
+  total       Float
+  projectId   String?         // Opcional: relación con proyecto
+  
+  contact     Contact         @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  project     Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  detalles    DetalleCompra[]
+}
+
+model DetalleCompra {
+  id             String   @id @default(uuid())
+  compraId       String
+  productoId     String
+  cantidad       Int
+  precioUnitario Float
+
+  compra   Compra   @relation(fields: [compraId], references: [id], onDelete: Cascade)
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+}
+
+model Venta {
+  id          String         @id @default(uuid())
+  fecha       DateTime       @default(now())
+  contactId   String         // Sustituye a clienteId
+  notas       String?
+  total       Float
+  estadoPago  String         @default("PAGADO")
+  montoPagado Float          @default(0)
+  estadoVenta String         @default("COMPLETADA")
+  projectId   String?        // Opcional: relación con proyecto
+  incomeId    String?        @unique // Income generado automáticamente al vincular con proyecto
+
+  contact     Contact        @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  project     Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  detalles    DetalleVenta[]
+}
+
+model DetalleVenta {
+  id             String   @id @default(uuid())
+  ventaId        String
+  productoId     String
+  cantidad       Int
+  precioUnitario Float
+
+  venta    Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+}
