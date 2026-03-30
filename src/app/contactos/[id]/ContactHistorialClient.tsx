@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { ShoppingBag, CheckCircle, RotateCcw, Wallet } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/constants'
 import { markVentaAsPaid, payPartialVenta, returnVenta } from '@/app/actions/venta-actions'
@@ -27,6 +28,7 @@ type Venta = {
 }
 
 export default function ContactHistorialClient({ ventas }: { ventas: Venta[] }) {
+  const [copyEmail, setCopyEmail] = useState('')
   const { showToast } = useToast()
   const { confirm, prompt } = useModal()
   
@@ -35,7 +37,7 @@ export default function ContactHistorialClient({ ventas }: { ventas: Venta[] }) 
       title: 'Confirmar Cobro',
       message: '¿Marcar este ticket completo como cobrado?'
     })) {
-      const result = await markVentaAsPaid(id)
+      const result = await markVentaAsPaid(id, copyEmail || null)
       if (result.success) showToast(result.message || 'Éxito', 'success')
       else showToast(result.message || 'Error', 'error')
     }
@@ -67,7 +69,7 @@ export default function ContactHistorialClient({ ventas }: { ventas: Venta[] }) 
       }
     }
 
-    const result = await payPartialVenta(venta.id, importe)
+    const result = await payPartialVenta(venta.id, importe, copyEmail || null)
     if (result.success) showToast(result.message || 'Éxito', 'success')
     else showToast(result.message || 'Error', 'error')
   }
@@ -85,7 +87,7 @@ export default function ContactHistorialClient({ ventas }: { ventas: Venta[] }) 
       type: 'danger',
       confirmText: 'Sí, Devolver'
     })) {
-      const result = await returnVenta(venta.id)
+      const result = await returnVenta(venta.id, copyEmail || null)
       if (result.success) showToast(result.message || 'Éxito', 'success')
       else showToast(result.message || 'Error', 'error')
     }
@@ -109,6 +111,22 @@ export default function ContactHistorialClient({ ventas }: { ventas: Venta[] }) 
       <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <ShoppingBag size={20} className="text-primary" /> Historial de Ventas
       </h3>
+
+      <div style={{ marginBottom: '16px' }}>
+        <input
+          type="email"
+          value={copyEmail}
+          onChange={(e) => setCopyEmail(e.target.value)}
+          placeholder="Email copia de movimientos (opcional)"
+          style={{
+            width: '100%',
+            padding: '10px 12px',
+            borderRadius: '10px',
+            border: '1px solid var(--border)',
+            background: 'white',
+          }}
+        />
+      </div>
       
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {ventas.map((venta) => (
@@ -119,6 +137,8 @@ export default function ContactHistorialClient({ ventas }: { ventas: Venta[] }) 
                 <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {venta.estadoVenta === 'DEVUELTA' ? (
                     <span className="badge badge-danger">DEVUELTA</span>
+                  ) : venta.estadoVenta === 'PARCIALMENTE_DEVUELTA' ? (
+                    <span className="badge" style={{ background: '#e0e7ff', color: '#3730a3' }}>DEVOLUCION PARCIAL</span>
                   ) : (
                     venta.estadoPago === 'PAGADO' ? (
                       <span className="badge badge-primary">PAGADO</span>

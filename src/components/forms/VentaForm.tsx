@@ -48,6 +48,7 @@ export default function VentaForm({
   const [notas, setNotas] = useState('')
   const [estadoPago, setEstadoPago] = useState('PAGADO')
   const [projectId, setProjectId] = useState('')
+  const [copyEmail, setCopyEmail] = useState('')
   const lineIdRef = useRef(1)
   const [lineas, setLineas] = useState<VentaLinea[]>([
     { id: 0, productoId: '', cantidad: 1, precioUnitario: 0 }
@@ -127,7 +128,8 @@ export default function VentaForm({
         notas,
         estadoPago,
         detalles,
-        projectId || null
+        projectId || null,
+        copyEmail || null
       )
 
       if (result.success) {
@@ -211,6 +213,18 @@ export default function VentaForm({
               value={notas}
               onChange={e => setNotas(e.target.value)}
               placeholder="Ej: Entregado en mano"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-900" htmlFor="copyEmail">Email copia de movimientos</label>
+            <input
+              id="copyEmail"
+              type="email"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all text-gray-700"
+              value={copyEmail}
+              onChange={e => setCopyEmail(e.target.value)}
+              placeholder="tu-email@dominio.com (opcional)"
             />
           </div>
         </div>

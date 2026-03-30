@@ -25,6 +25,9 @@ cp .env.example .env.local
 
 - `DATABASE_URL`: ruta de SQLite (recomendado: `file:./dev.db`, relativa a `prisma/schema.prisma`).
 - `LOCAL_ADMIN_TOKEN`: token para endpoints sensibles (`/api/backup/*`) y para apagar el servidor cuando no se accede por `localhost`.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`: opcionales para enviar correos automaticos por cada movimiento de venta.
+
+Si no configuras SMTP, la app sigue funcionando pero no enviara emails.
 
 ## Desarrollo
 
