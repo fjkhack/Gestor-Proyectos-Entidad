@@ -31,9 +31,19 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # 4. Preparar Base de datos
-echo "⏳ Sincronizando base de datos Prisma..."
-npx prisma generate > /dev/null 2>&1
-npx prisma db push --accept-data-loss > /dev/null 2>&1
+echo "⏳ Preparando base de datos Prisma..."
+if ! npx prisma generate > /dev/null 2>&1; then
+    echo "❌ Error al generar el cliente Prisma."
+    read -p "Presiona Enter para salir..."
+    exit 1
+fi
+
+if ! npx prisma migrate deploy > /dev/null 2>&1; then
+    echo "❌ Error al aplicar migraciones Prisma de forma segura."
+    echo "Revisa el estado con: npx prisma migrate status"
+    read -p "Presiona Enter para salir..."
+    exit 1
+fi
 
 # 5. Iniciar el servidor (Modo Dev para desarrollo ágil y recarga en caliente)
 PORT=3000

@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Gestor-Proyectos-Entidad
 
-## Getting Started
+Aplicacion local para gestion de proyectos, contactos, compras, ventas y copias de seguridad.
 
-First, run the development server:
+## Requisitos
+
+- Node.js 18+
+- npm 9+
+
+## Configuracion inicial
+
+1. Instala dependencias:
+
+```bash
+npm install
+```
+
+2. Crea tu archivo de entorno local:
+
+```bash
+cp .env.example .env.local
+```
+
+3. Configura variables:
+
+- `DATABASE_URL`: ruta de SQLite.
+- `LOCAL_ADMIN_TOKEN`: token obligatorio para endpoints sensibles en local (`/api/shutdown`, `/api/backup/*`).
+
+## Desarrollo
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+La app abre en `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Base de datos
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Aplicar migraciones de forma segura:
 
-## Learn More
+```bash
+npx prisma migrate deploy
+```
 
-To learn more about Next.js, take a look at the following resources:
+Generar cliente Prisma:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npx prisma generate
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Arranque en modo app local (macOS)
 
-## Deploy on Vercel
+Puedes usar el script:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+./iniciar-gestor.command
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Este script:
+
+- instala dependencias (si faltan),
+- aplica migraciones con `prisma migrate deploy`,
+- levanta el servidor en puerto 3000,
+- abre la app en modo ventana de Chrome.
+
+## Calidad
+
+```bash
+npm run lint
+npx tsc --noEmit
+```
