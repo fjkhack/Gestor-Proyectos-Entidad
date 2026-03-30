@@ -23,8 +23,8 @@ cp .env.example .env.local
 
 3. Configura variables:
 
-- `DATABASE_URL`: ruta de SQLite.
-- `LOCAL_ADMIN_TOKEN`: token obligatorio para endpoints sensibles en local (`/api/shutdown`, `/api/backup/*`).
+- `DATABASE_URL`: ruta de SQLite (recomendado: `file:./dev.db`, relativa a `prisma/schema.prisma`).
+- `LOCAL_ADMIN_TOKEN`: token para endpoints sensibles (`/api/backup/*`) y para apagar el servidor cuando no se accede por `localhost`.
 
 ## Desarrollo
 

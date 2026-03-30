@@ -61,7 +61,16 @@ export function Sidebar() {
   const handleShutdown = async () => {
     if (window.confirm("¿Estás seguro de que deseas salir y apagar el gestor?")) {
       try {
-        await fetch("/api/shutdown", { method: "POST" });
+        const response = await fetch("/api/shutdown", {
+          method: "POST",
+        });
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          const message = body.message || body.error || "No se pudo apagar el servidor.";
+          throw new Error(message);
+        }
+
         // The script also ends when Node dies, so all terminals will close.
         window.close();
         
@@ -71,7 +80,7 @@ export function Sidebar() {
         }, 1000);
       } catch (error) {
         console.error("Error al intentar apagar:", error);
-        window.close();
+        alert(error instanceof Error ? error.message : "No se pudo apagar el servidor.");
       }
     }
   };

@@ -4,6 +4,7 @@ import { guardLocalAdminRequest } from "@/lib/security"
 export async function POST(request: Request) {
   const guardResponse = guardLocalAdminRequest(request, {
     featureName: "Server shutdown",
+    allowLoopbackWithoutToken: true,
   })
   if (guardResponse) return guardResponse
 

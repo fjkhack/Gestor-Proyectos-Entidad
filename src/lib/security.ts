@@ -2,6 +2,26 @@ import { NextResponse } from "next/server"
 
 type GuardOptions = {
   featureName: string
+  allowLoopbackWithoutToken?: boolean
+}
+
+function isLoopbackRequest(request: Request): boolean {
+  const loopbackHosts = new Set(["localhost", "127.0.0.1", "::1"])
+
+  try {
+    const url = new URL(request.url)
+    if (loopbackHosts.has(url.hostname)) return true
+  } catch {
+    // Ignore malformed URL and keep evaluating headers.
+  }
+
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+  if (forwardedFor && loopbackHosts.has(forwardedFor)) return true
+
+  const realIp = request.headers.get("x-real-ip")?.trim()
+  if (realIp && loopbackHosts.has(realIp)) return true
+
+  return false
 }
 
 export function guardLocalAdminRequest(request: Request, options: GuardOptions): NextResponse | null {
@@ -14,6 +34,10 @@ export function guardLocalAdminRequest(request: Request, options: GuardOptions):
       },
       { status: 403 }
     )
+  }
+
+  if (options.allowLoopbackWithoutToken && isLoopbackRequest(request)) {
+    return null
   }
 
   const expectedToken = process.env.LOCAL_ADMIN_TOKEN?.trim()
