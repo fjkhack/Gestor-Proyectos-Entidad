@@ -22,6 +22,20 @@ function money(value: number): string {
   return `${value.toFixed(2)} EUR`
 }
 
+function toLineItems(
+  detalles: Array<{
+    cantidad: number
+    precioUnitario: number
+    producto?: { nombre: string } | null
+  }>
+) {
+  return detalles.map((det) => ({
+    nombre: det.producto?.nombre || 'Producto eliminado',
+    cantidad: det.cantidad,
+    importe: det.cantidad * det.precioUnitario,
+  }))
+}
+
 export type VentaDetalleInput = {
   productoId: string
   cantidad: number
@@ -185,7 +199,7 @@ export async function deleteVenta(id: string, copyEmail?: string | null): Promis
     const result = await prisma.$transaction(async (tx) => {
       const venta = await tx.venta.findUnique({
         where: { id },
-        include: { detalles: true, contact: true },
+        include: { detalles: { include: { producto: true } }, contact: true },
       })
 
       if (!venta) throw new Error('Venta no encontrada')
@@ -210,6 +224,7 @@ export async function deleteVenta(id: string, copyEmail?: string | null): Promis
         contactEmail: venta.contact.email,
         total: venta.total,
         montoPagado: venta.montoPagado,
+        lineItems: toLineItems(venta.detalles),
       }
     })
 
@@ -228,6 +243,7 @@ export async function deleteVenta(id: string, copyEmail?: string | null): Promis
       montoPagado: 0,
       deuda: 0,
       amountChanged: result.total,
+      lineItems: result.lineItems,
     }).catch((error) => {
       console.error('Error sending venta delete email:', error)
     })
@@ -245,7 +261,10 @@ export async function markVentaAsPaid(id: string, copyEmail?: string | null): Pr
     if (copyEmail && !safeCopyEmail) return actionError('El email de copia no es válido')
 
     const result = await prisma.$transaction(async (tx) => {
-      const venta = await tx.venta.findUnique({ where: { id }, include: { contact: true } })
+      const venta = await tx.venta.findUnique({
+        where: { id },
+        include: { detalles: { include: { producto: true } }, contact: true },
+      })
       if (!venta) throw new Error('Venta no encontrada')
 
       const pagoAdicional = Math.max(venta.total - venta.montoPagado, 0)
@@ -277,6 +296,7 @@ export async function markVentaAsPaid(id: string, copyEmail?: string | null): Pr
         pagoAdicional,
         contactName: venta.contact.name,
         contactEmail: venta.contact.email,
+        lineItems: toLineItems(venta.detalles),
       }
     })
 
@@ -295,6 +315,7 @@ export async function markVentaAsPaid(id: string, copyEmail?: string | null): Pr
       montoPagado: result.venta.montoPagado,
       deuda: Math.max(result.venta.total - result.venta.montoPagado, 0),
       amountChanged: result.pagoAdicional,
+      lineItems: result.lineItems,
     }).catch((error) => {
       console.error('Error sending full payment email:', error)
     })
@@ -314,13 +335,18 @@ export async function returnVenta(id: string, copyEmail?: string | null): Promis
     const result = await prisma.$transaction(async (tx) => {
       const venta = await tx.venta.findUnique({
         where: { id },
-        include: { detalles: true, contact: true },
+        include: { detalles: { include: { producto: true } }, contact: true },
       })
 
       if (!venta) throw new Error('Venta no encontrada')
       if (venta.estadoVenta === 'DEVUELTA') throw new Error('La venta ya ha sido devuelta')
 
       const importeADevolver = venta.montoPagado
+      const returnedLines = venta.detalles.map((det) => ({
+        producto: det.producto?.nombre || 'Producto eliminado',
+        cantidad: det.cantidad,
+        importe: det.cantidad * det.precioUnitario,
+      }))
 
       for (const det of venta.detalles) {
         await tx.producto.update({
@@ -358,6 +384,7 @@ export async function returnVenta(id: string, copyEmail?: string | null): Promis
         contactName: venta.contact.name,
         contactEmail: venta.contact.email,
         importeADevolver,
+        returnedLines,
       }
     })
 
@@ -370,6 +397,7 @@ export async function returnVenta(id: string, copyEmail?: string | null): Promis
     await notifyVentaMovement({
       movementTitle: 'Devolución total',
       movementDescription: `Se ha anulado por completo la venta. Debes devolver al cliente ${money(result.importeADevolver)}.`,
+      actionRequired: result.importeADevolver > 0 ? `Devolver ${money(result.importeADevolver)} al cliente.` : undefined,
       ventaId: result.venta.id,
       contactName: result.contactName,
       contactEmail: result.contactEmail,
@@ -378,6 +406,11 @@ export async function returnVenta(id: string, copyEmail?: string | null): Promis
       montoPagado: result.venta.montoPagado,
       deuda: 0,
       refundAmount: result.importeADevolver,
+      lineItems: result.returnedLines.map((line) => ({
+        nombre: line.producto,
+        cantidad: line.cantidad,
+        importe: line.importe,
+      })),
     }).catch((error) => {
       console.error('Error sending full return email:', error)
     })
@@ -534,6 +567,11 @@ export async function returnVentaPartial(
       montoPagado: result.venta.montoPagado,
       deuda: Math.max(result.venta.total - result.venta.montoPagado, 0),
       refundAmount: result.refundAmount,
+      lineItems: result.returnedLines.map((line) => ({
+        nombre: line.producto,
+        cantidad: line.cantidad,
+        importe: line.importe,
+      })),
     }).catch((error) => {
       console.error('Error sending partial return email:', error)
     })
@@ -556,7 +594,10 @@ export async function payPartialVenta(id: string, importe: number, copyEmail?: s
     if (!Number.isFinite(importe)) return actionError('El importe a abonar no es válido')
 
     const result = await prisma.$transaction(async (tx) => {
-      const venta = await tx.venta.findUnique({ where: { id }, include: { contact: true } })
+      const venta = await tx.venta.findUnique({
+        where: { id },
+        include: { detalles: { include: { producto: true } }, contact: true },
+      })
       if (!venta) throw new Error('Venta no encontrada')
       if (venta.estadoVenta === 'DEVUELTA') throw new Error('No se puede pagar una venta devuelta')
       if (venta.estadoPago === 'PAGADO') throw new Error('La venta ya está pagada')
@@ -594,6 +635,7 @@ export async function payPartialVenta(id: string, importe: number, copyEmail?: s
         contactName: venta.contact.name,
         contactEmail: venta.contact.email,
         importe,
+        lineItems: toLineItems(venta.detalles),
       }
     })
 
@@ -612,6 +654,7 @@ export async function payPartialVenta(id: string, importe: number, copyEmail?: s
       montoPagado: result.venta.montoPagado,
       deuda: Math.max(result.venta.total - result.venta.montoPagado, 0),
       amountChanged: result.importe,
+      lineItems: result.lineItems,
     }).catch((error) => {
       console.error('Error sending partial payment email:', error)
     })
