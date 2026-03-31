@@ -54,6 +54,20 @@ model Action {
   // Asignación de participante
   participantId String?
   participant   Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  reminderLogs  ReminderLog[]
+}
+
+model ReminderLog {
+  id           String   @id @default(uuid())
+  actionId     String
+  reminderType String
+  reminderDate DateTime
+  createdAt    DateTime @default(now())
+
+  action       Action   @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@unique([actionId, reminderType, reminderDate])
+  @@index([reminderDate])
 }
 
 // 4. Participantes (ALERTA: Obsoleto, migrando hacia Contact + ProjectParticipant)

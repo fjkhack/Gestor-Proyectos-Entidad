@@ -61,9 +61,16 @@ export function Sidebar() {
   const handleShutdown = async () => {
     if (window.confirm("¿Estás seguro de que deseas salir y apagar el gestor?")) {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
         const response = await fetch("/api/shutdown", {
           method: "POST",
+          keepalive: true,
+          signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
@@ -79,6 +86,11 @@ export function Sidebar() {
           alert("El servidor se ha apagado. Ya puedes cerrar esta ventana.");
         }, 1000);
       } catch (error) {
+        if (error instanceof TypeError && /failed to fetch/i.test(error.message)) {
+          alert("No se pudo confirmar la respuesta, pero el apagado puede haberse ejecutado. Espera unos segundos y recarga para comprobarlo.");
+          return;
+        }
+
         console.error("Error al intentar apagar:", error);
         alert(error instanceof Error ? error.message : "No se pudo apagar el servidor.");
       }

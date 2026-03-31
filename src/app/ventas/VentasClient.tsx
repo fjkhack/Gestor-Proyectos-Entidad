@@ -2,7 +2,7 @@
 
 import { useState, Fragment } from 'react'
 import Link from 'next/link'
-import { Plus, Search, Trash2, ChevronDown, ChevronUp, Wallet, Undo2, ShoppingBag, CheckCircle2, RotateCcw } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronUp, Wallet, Undo2, ShoppingBag, CheckCircle2, RotateCcw } from 'lucide-react'
 import { deleteVenta, markVentaAsPaid, returnVenta, payPartialVenta, returnVentaPartial } from '@/app/actions/venta-actions'
 import { useToast } from '@/components/ui/Toast'
 import { useModal } from '@/components/ui/ModalProvider'
@@ -53,6 +53,8 @@ type Venta = {
 export default function VentasClient({ ventas }: { ventas: Venta[] }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [estadoFilter, setEstadoFilter] = useState('TODOS')
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
   const [copyEmail, setCopyEmail] = useState('')
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
   const [returningVenta, setReturningVenta] = useState<Venta | null>(null)
@@ -63,9 +65,15 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
   const filteredVentas = ventas.filter(v => {
     const contactName = v.contact?.name?.toLowerCase() || ''
     const matchesSearch = contactName.includes(searchTerm.toLowerCase()) || v.id.toLowerCase().includes(searchTerm.toLowerCase())
+    const ventaDate = new Date(v.fecha)
+    const minDate = fechaDesde ? new Date(`${fechaDesde}T00:00:00`) : null
+    const maxDate = fechaHasta ? new Date(`${fechaHasta}T23:59:59.999`) : null
+    const matchesDateFrom = !minDate || ventaDate.getTime() >= minDate.getTime()
+    const matchesDateTo = !maxDate || ventaDate.getTime() <= maxDate.getTime()
+    const matchesDate = matchesDateFrom && matchesDateTo
     
-    if (estadoFilter === 'TODOS') return matchesSearch
-    return matchesSearch && v.estadoPago === estadoFilter
+    if (estadoFilter === 'TODOS') return matchesSearch && matchesDate
+    return matchesSearch && matchesDate && v.estadoPago === estadoFilter
   })
 
   const toggleRow = (id: string) => {
@@ -183,6 +191,13 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
     }
   }
 
+  const clearFilters = () => {
+    setSearchTerm('')
+    setEstadoFilter('TODOS')
+    setFechaDesde('')
+    setFechaHasta('')
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -199,25 +214,9 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-4 items-center">
-        <div className="flex items-center gap-3 flex-1 w-full bg-gray-50 px-4 py-2 rounded-lg border border-gray-100">
-          <Search size={20} className="text-gray-400" />
-          <input 
-            type="text" 
-            placeholder="Buscar por contacto..." 
-            className="flex-1 outline-none text-gray-700 bg-transparent"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <select 
-          className="px-4 py-2 bg-white border border-gray-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-gray-700 w-full sm:w-auto min-w-[180px]" 
-          value={estadoFilter} 
-          onChange={e => setEstadoFilter(e.target.value)}
-        >
-          <option value="TODOS">Todos los estados</option>
-          <option value="PAGADO">Cobrado</option>
-          <option value="PENDIENTE">Fiado (Pendiente)</option>
-        </select>
+        <p className="text-sm text-gray-600 w-full sm:w-auto sm:flex-1">
+          Usa los filtros de la cabecera para cliente, estado y fecha.
+        </p>
         <input
           type="email"
           value={copyEmail}
@@ -238,6 +237,57 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
                 <th className="px-6 py-4 font-semibold">Estado</th>
                 <th className="px-6 py-4 font-semibold text-right">Total</th>
                 <th className="px-6 py-4 font-semibold text-center">Acciones</th>
+              </tr>
+              <tr className="bg-white border-b border-gray-100">
+                <th className="px-6 py-3"></th>
+                <th className="px-6 py-3">
+                  <div className="grid grid-cols-1 gap-2">
+                    <input
+                      type="date"
+                      aria-label="Filtrar fecha desde"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                      value={fechaDesde}
+                      onChange={(e) => setFechaDesde(e.target.value)}
+                    />
+                    <input
+                      type="date"
+                      aria-label="Filtrar fecha hasta"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                      value={fechaHasta}
+                      onChange={(e) => setFechaHasta(e.target.value)}
+                    />
+                  </div>
+                </th>
+                <th className="px-6 py-3">
+                  <input
+                    type="text"
+                    placeholder="Filtrar cliente o ID..."
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </th>
+                <th className="px-6 py-3">
+                  <select
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    value={estadoFilter}
+                    onChange={(e) => setEstadoFilter(e.target.value)}
+                  >
+                    <option value="TODOS">Todos</option>
+                    <option value="PAGADO">Pagado</option>
+                    <option value="PENDIENTE">Pendiente</option>
+                  </select>
+                </th>
+                <th className="px-6 py-3"></th>
+                <th className="px-6 py-3 text-right">
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Limpiar filtros
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>

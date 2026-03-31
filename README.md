@@ -26,8 +26,65 @@ cp .env.example .env.local
 - `DATABASE_URL`: ruta de SQLite (recomendado: `file:./dev.db`, relativa a `prisma/schema.prisma`).
 - `LOCAL_ADMIN_TOKEN`: token para endpoints sensibles (`/api/backup/*`) y para apagar el servidor cuando no se accede por `localhost`.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`: opcionales para enviar correos automaticos por cada movimiento de venta.
+- `REMINDER_ENABLED`, `REMINDER_TO`, `REMINDER_HOUR`: opcionales para activar recordatorios diarios de tareas pendientes (vencidas, hoy y manana).
 
 Si no configuras SMTP, la app sigue funcionando pero no enviara emails.
+
+## Recordatorios de tareas
+
+El sistema puede enviar un resumen diario por email de tareas pendientes:
+
+- Vencidas
+- Con vencimiento hoy
+- Con vencimiento manana
+
+Variables recomendadas:
+
+```bash
+REMINDER_ENABLED="true"
+REMINDER_TO="admin@tu-dominio.com"
+REMINDER_HOUR="9"
+```
+
+Ejecucion manual:
+
+```bash
+npm run reminders:run
+```
+
+Forzar envio (ignora la hora configurada):
+
+```bash
+npm run reminders:run -- --force
+```
+
+## Programar recordatorios automaticos en macOS (launchd)
+
+Instalar o actualizar la tarea diaria (usa `REMINDER_HOUR` de `.env.local`):
+
+```bash
+chmod +x scripts/setup-reminders-launchd.sh
+./scripts/setup-reminders-launchd.sh
+```
+
+Comandos utiles:
+
+```bash
+# Estado del job
+launchctl print gui/$(id -u)/com.gestorproyectos.reminders
+
+# Ejecutar ahora (prueba manual)
+launchctl kickstart -k gui/$(id -u)/com.gestorproyectos.reminders
+
+# Desinstalar job
+launchctl bootout gui/$(id -u)/com.gestorproyectos.reminders
+rm ~/Library/LaunchAgents/com.gestorproyectos.reminders.plist
+```
+
+Logs:
+
+- `/tmp/gestor-reminders.out.log`
+- `/tmp/gestor-reminders.err.log`
 
 ## Desarrollo
 

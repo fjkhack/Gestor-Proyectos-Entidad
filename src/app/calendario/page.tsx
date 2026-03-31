@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { format, isPast, isToday, addDays } from "date-fns";
 import { es } from "date-fns/locale";
-import { Calendar as CalendarIcon, Clock, AlertCircle } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, AlertCircle, CheckCircle2 } from "lucide-react";
 
 type CalendarEvent = {
   id: string;
@@ -12,6 +12,8 @@ type CalendarEvent = {
   type: string;
   label: string;
   color: string;
+  details?: string;
+  completed?: boolean;
 };
 
 export default async function CalendarioPage() {
@@ -19,6 +21,16 @@ export default async function CalendarioPage() {
     where: {
       status: {
         in: ["IDEA", "EN_PROCESO"],
+      },
+    },
+    include: {
+      actions: {
+        where: {
+          date: { not: null },
+        },
+        include: {
+          participant: true,
+        },
       },
     },
   });
@@ -33,6 +45,22 @@ export default async function CalendarioPage() {
     if (p.endDate) events.push({ id: `${p.id}-end`, projectId: p.id, projectName: p.title, date: p.endDate, type: "endDate", label: "Fin Ejecución", color: "bg-green-100 text-green-700 border-green-200" });
     if (p.publicityDate) events.push({ id: `${p.id}-pub`, projectId: p.id, projectName: p.title, date: p.publicityDate, type: "publicityDate", label: "Publicidad / Difusión", color: "bg-orange-100 text-orange-700 border-orange-200" });
     if (p.justificationDate) events.push({ id: `${p.id}-just`, projectId: p.id, projectName: p.title, date: p.justificationDate, type: "justificationDate", label: "Límite Justificación", color: "bg-red-100 text-red-700 border-red-200 font-bold" });
+    p.actions.forEach((action) => {
+      if (!action.date) return;
+      events.push({
+        id: `${p.id}-task-${action.id}`,
+        projectId: p.id,
+        projectName: p.title,
+        date: action.date,
+        type: "task",
+        label: action.completed ? "Tarea completada" : "Tarea",
+        color: action.completed
+          ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+          : "bg-amber-100 text-amber-800 border-amber-200",
+        details: action.participant?.name ? `${action.title} · ${action.participant.name}` : action.title,
+        completed: action.completed,
+      });
+    });
   });
 
   // Sort by date ascending
@@ -80,9 +108,10 @@ export default async function CalendarioPage() {
                   {monthEvents.map((event) => {
                     const past = isPast(event.date) && !isToday(event.date);
                     const today = isToday(event.date);
+                    const rowMuted = past || event.completed;
                     
                     return (
-                      <div key={event.id} className={`p-4 sm:p-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center hover:bg-gray-50 transition-colors ${past ? 'opacity-60' : ''}`}>
+                      <div key={event.id} className={`p-4 sm:p-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center hover:bg-gray-50 transition-colors ${rowMuted ? 'opacity-60' : ''}`}>
                         
                         <div className="sm:w-32 flex-shrink-0">
                           <div className={`text-sm font-bold ${today ? 'text-indigo-600' : (past ? 'text-gray-400' : 'text-gray-900')}`}>
@@ -100,7 +129,13 @@ export default async function CalendarioPage() {
                             {event.type === 'justificationDate' && !past && (
                               <AlertCircle className="w-4 h-4 text-red-500" />
                             )}
+                            {event.type === 'task' && event.completed && (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            )}
                           </div>
+                          {event.details && (
+                            <p className="text-sm text-gray-700">{event.details}</p>
+                          )}
                           <Link 
                             href={`/proyectos/${event.projectId}`}
                             className="text-lg font-bold text-gray-900 hover:text-indigo-600 transition-colors inline-block"

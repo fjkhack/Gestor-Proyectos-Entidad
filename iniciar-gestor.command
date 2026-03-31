@@ -104,10 +104,10 @@ echo "🌍 Abriendo la aplicación..."
 if [ -d "/Applications/Google Chrome.app" ]; then
     # --app quita las barras de navegación, dándole apariencia de aplicación nativa
     # --user-data-dir temporalmente previene que se agrupe con otras ventanas del navegador normal (opcional)
-    /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --app="http://localhost:$PORT"
+    /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --app="http://localhost:$PORT" >/dev/null 2>&1 &
 else
     # Fallback si por alguna razón desinstalas Chrome: abrir navegador por defecto
-    open "http://localhost:$PORT"
+    open "http://localhost:$PORT" >/dev/null 2>&1
 fi
 
 echo ""
