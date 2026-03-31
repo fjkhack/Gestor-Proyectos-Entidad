@@ -15,6 +15,9 @@ export default async function VentasPage() {
         include: {
           producto: true
         }
+      },
+      movimientos: {
+        orderBy: { createdAt: 'desc' }
       }
     },
     orderBy: { fecha: 'desc' }
