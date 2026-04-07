@@ -2,8 +2,8 @@
 
 import { useState, Fragment } from 'react'
 import Link from 'next/link'
-import { Plus, Search, Trash2, ChevronDown, ChevronUp, DollarSign, Undo2, ShoppingBag } from 'lucide-react'
-import { deleteVenta, markVentaAsPaid, returnVenta, payPartialVenta } from '@/app/actions/venta-actions'
+import { Plus, Trash2, ChevronDown, ChevronUp, Wallet, Undo2, ShoppingBag, CheckCircle2, RotateCcw } from 'lucide-react'
+import { deleteVenta, markVentaAsPaid, returnVenta, payPartialVenta, returnVentaPartial } from '@/app/actions/venta-actions'
 import { useToast } from '@/components/ui/Toast'
 import { useModal } from '@/components/ui/ModalProvider'
 import { formatDate, formatCurrency } from '@/lib/constants'
@@ -21,8 +21,21 @@ type VentaDetalle = {
 }
 
 type VentaContact = {
+  id: string
   name: string
+  email?: string | null
 } | null
+
+type VentaMovimiento = {
+  id: string
+  tipo: string
+  resumen: string
+  monto: number | null
+  total: number
+  montoPagado: number
+  deuda: number
+  createdAt: Date | string
+}
 
 type Venta = {
   id: string
@@ -34,21 +47,33 @@ type Venta = {
   notas: string | null
   contact: VentaContact
   detalles: VentaDetalle[]
+  movimientos?: VentaMovimiento[]
 }
 
 export default function VentasClient({ ventas }: { ventas: Venta[] }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [estadoFilter, setEstadoFilter] = useState('TODOS')
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
+  const [copyEmail, setCopyEmail] = useState('')
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
+  const [returningVenta, setReturningVenta] = useState<Venta | null>(null)
+  const [returnQtys, setReturnQtys] = useState<Record<string, number>>({})
   const { showToast } = useToast()
   const { confirm, prompt } = useModal()
 
   const filteredVentas = ventas.filter(v => {
     const contactName = v.contact?.name?.toLowerCase() || ''
     const matchesSearch = contactName.includes(searchTerm.toLowerCase()) || v.id.toLowerCase().includes(searchTerm.toLowerCase())
+    const ventaDate = new Date(v.fecha)
+    const minDate = fechaDesde ? new Date(`${fechaDesde}T00:00:00`) : null
+    const maxDate = fechaHasta ? new Date(`${fechaHasta}T23:59:59.999`) : null
+    const matchesDateFrom = !minDate || ventaDate.getTime() >= minDate.getTime()
+    const matchesDateTo = !maxDate || ventaDate.getTime() <= maxDate.getTime()
+    const matchesDate = matchesDateFrom && matchesDateTo
     
-    if (estadoFilter === 'TODOS') return matchesSearch
-    return matchesSearch && v.estadoPago === estadoFilter
+    if (estadoFilter === 'TODOS') return matchesSearch && matchesDate
+    return matchesSearch && matchesDate && v.estadoPago === estadoFilter
   })
 
   const toggleRow = (id: string) => {
@@ -65,7 +90,7 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
       confirmText: 'Sí, Eliminar Venta'
     }).then(async (confirmed) => {
       if (confirmed) {
-        const result = await deleteVenta(id)
+        const result = await deleteVenta(id, copyEmail || null)
         if (result.success) {
           showToast(result.message || 'Eliminado con éxito', 'success')
         } else {
@@ -82,7 +107,7 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
       type: 'info',
       confirmText: 'Sí, Marcar Pagado'
     })) {
-      const result = await markVentaAsPaid(id)
+      const result = await markVentaAsPaid(id, copyEmail || null)
       if (result.success) {
         showToast(result.message || 'Éxito', 'success')
       } else {
@@ -91,19 +116,54 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
     }
   }
 
-  const handleReturn = async (id: string) => {
+  const handleReturn = async (venta: Venta) => {
+    const refundMsg = venta.montoPagado > 0
+      ? `\n\nIMPORTANTE: el cliente ya abonó ${formatCurrency(venta.montoPagado)} y debes devolvérselo.`
+      : ''
+
     if (await confirm({
       title: 'Devolver Venta',
-      message: '¿Estás seguro de que quieres procesar la devolución? Se restaurará el stock y el importe pasará a 0€.',
+      message: `¿Estás seguro de que quieres procesar la devolución? Se restaurará el stock y el importe pasará a 0€.${refundMsg}`,
       type: 'warning',
       confirmText: 'Sí, Procesar Devolución'
     })) {
-      const result = await returnVenta(id)
+      const result = await returnVenta(venta.id, copyEmail || null)
       if (result.success) {
         showToast(result.message || 'Éxito', 'success')
       } else {
         showToast(result.message || 'Error', 'error')
       }
+    }
+  }
+
+  const openPartialReturn = (venta: Venta) => {
+    const initialQtys = venta.detalles.reduce<Record<string, number>>((acc, det) => {
+      acc[det.id] = 0
+      return acc
+    }, {})
+    setReturnQtys(initialQtys)
+    setReturningVenta(venta)
+  }
+
+  const handlePartialReturnSubmit = async () => {
+    if (!returningVenta) return
+
+    const items = returningVenta.detalles
+      .map((det) => ({ detalleId: det.id, cantidad: Math.floor(Number(returnQtys[det.id] || 0)) }))
+      .filter((item) => item.cantidad > 0)
+
+    if (items.length === 0) {
+      showToast('Selecciona al menos una cantidad para devolver', 'error')
+      return
+    }
+
+    const result = await returnVentaPartial(returningVenta.id, items, copyEmail || null)
+    if (result.success) {
+      showToast(result.message || 'Devolución parcial registrada', 'success')
+      setReturningVenta(null)
+      setReturnQtys({})
+    } else {
+      showToast(result.message || 'Error al procesar la devolución parcial', 'error')
     }
   }
 
@@ -122,13 +182,20 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
         return
       }
 
-      const result = await payPartialVenta(venta.id, amount)
+      const result = await payPartialVenta(venta.id, amount, copyEmail || null)
       if (result.success) {
         showToast(result.message || 'Éxito', 'success')
       } else {
         showToast(result.message || 'Error', 'error')
       }
     }
+  }
+
+  const clearFilters = () => {
+    setSearchTerm('')
+    setEstadoFilter('TODOS')
+    setFechaDesde('')
+    setFechaHasta('')
   }
 
   return (
@@ -147,25 +214,16 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
       </div>
 
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-4 items-center">
-        <div className="flex items-center gap-3 flex-1 w-full bg-gray-50 px-4 py-2 rounded-lg border border-gray-100">
-          <Search size={20} className="text-gray-400" />
-          <input 
-            type="text" 
-            placeholder="Buscar por contacto..." 
-            className="flex-1 outline-none text-gray-700 bg-transparent"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <select 
-          className="px-4 py-2 bg-white border border-gray-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-gray-700 w-full sm:w-auto min-w-[180px]" 
-          value={estadoFilter} 
-          onChange={e => setEstadoFilter(e.target.value)}
-        >
-          <option value="TODOS">Todos los estados</option>
-          <option value="PAGADO">Cobrado</option>
-          <option value="PENDIENTE">Fiado (Pendiente)</option>
-        </select>
+        <p className="text-sm text-gray-600 w-full sm:w-auto sm:flex-1">
+          Usa los filtros de la cabecera para cliente, estado y fecha.
+        </p>
+        <input
+          type="email"
+          value={copyEmail}
+          onChange={(e) => setCopyEmail(e.target.value)}
+          placeholder="Email copia movimientos (opcional)"
+          className="px-4 py-2 bg-white border border-gray-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-gray-700 w-full sm:w-[300px]"
+        />
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -179,6 +237,57 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
                 <th className="px-6 py-4 font-semibold">Estado</th>
                 <th className="px-6 py-4 font-semibold text-right">Total</th>
                 <th className="px-6 py-4 font-semibold text-center">Acciones</th>
+              </tr>
+              <tr className="bg-white border-b border-gray-100">
+                <th className="px-6 py-3"></th>
+                <th className="px-6 py-3">
+                  <div className="grid grid-cols-1 gap-2">
+                    <input
+                      type="date"
+                      aria-label="Filtrar fecha desde"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                      value={fechaDesde}
+                      onChange={(e) => setFechaDesde(e.target.value)}
+                    />
+                    <input
+                      type="date"
+                      aria-label="Filtrar fecha hasta"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                      value={fechaHasta}
+                      onChange={(e) => setFechaHasta(e.target.value)}
+                    />
+                  </div>
+                </th>
+                <th className="px-6 py-3">
+                  <input
+                    type="text"
+                    placeholder="Filtrar cliente o ID..."
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </th>
+                <th className="px-6 py-3">
+                  <select
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    value={estadoFilter}
+                    onChange={(e) => setEstadoFilter(e.target.value)}
+                  >
+                    <option value="TODOS">Todos</option>
+                    <option value="PAGADO">Pagado</option>
+                    <option value="PENDIENTE">Pendiente</option>
+                  </select>
+                </th>
+                <th className="px-6 py-3"></th>
+                <th className="px-6 py-3 text-right">
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Limpiar filtros
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -195,6 +304,8 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
                 filteredVentas.map((venta) => {
                   const isPendiente = venta.estadoPago === 'PENDIENTE' && venta.estadoVenta !== 'DEVUELTA'
                   const isDevuelta = venta.estadoVenta === 'DEVUELTA'
+                  const isPartialReturn = venta.estadoVenta === 'PARCIALMENTE_DEVUELTA'
+                  const restante = Math.max(venta.total - venta.montoPagado, 0)
                   
                   return (
                     <Fragment key={venta.id}>
@@ -211,6 +322,7 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
                         <td className="px-6 py-4 font-medium text-gray-900">
                           {venta.contact?.name || 'Desconocido'}
                           {isDevuelta && <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">Devuelta</span>}
+                          {isPartialReturn && <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">Devolución parcial</span>}
                         </td>
                         <td className="px-6 py-4">
                           {!isDevuelta ? (
@@ -223,9 +335,14 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
                         </td>
                         <td className={`px-6 py-4 text-right font-semibold ${isDevuelta ? 'text-gray-500' : 'text-gray-900'}`}>
                           {formatCurrency(venta.total)}
-                          {isPendiente && (
+                          {(isPendiente || venta.montoPagado > 0) && (
                             <div className="text-xs text-amber-600 font-normal mt-0.5">
                               Pagado: {formatCurrency(venta.montoPagado)}
+                            </div>
+                          )}
+                          {(isPendiente || restante > 0) && (
+                            <div className="text-xs text-red-600 font-semibold mt-0.5">
+                              Debe: {formatCurrency(restante)}
                             </div>
                           )}
                         </td>
@@ -239,26 +356,35 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
                                   className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" 
                                   title="Registrar Abono"
                                 >
-                                  <DollarSign size={18} />
+                                  <Wallet size={18} />
                                 </button>
                                 <button 
                                   onClick={() => handleMarkAsPaid(venta.id)} 
                                   className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" 
                                   title="Marcar Pagado (Completar)"
                                 >
-                                  <DollarSign size={18} />
+                                  <CheckCircle2 size={18} />
                                 </button>
                               </>
                             )}
-                            
+                             
                             {!isDevuelta && (
-                              <button 
-                                onClick={() => handleReturn(venta.id)} 
-                                className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" 
-                                title="Devolver Venta"
-                              >
-                                <Undo2 size={18} />
-                              </button>
+                              <>
+                                <button 
+                                  onClick={() => openPartialReturn(venta)} 
+                                  className="p-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors" 
+                                  title="Devolución parcial"
+                                >
+                                  <Undo2 size={18} />
+                                </button>
+                                <button 
+                                  onClick={() => handleReturn(venta)} 
+                                  className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" 
+                                  title="Devolución total"
+                                >
+                                  <RotateCcw size={18} />
+                                </button>
+                              </>
                             )}
   
                             <button 
@@ -302,6 +428,25 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
                                   <strong className="font-medium text-gray-900">Notas:</strong> {venta.notas}
                                 </div>
                               )}
+                              {venta.movimientos && venta.movimientos.length > 0 && (
+                                <div className="px-4 py-3 border-t border-gray-100 bg-slate-50">
+                                  <h4 className="text-xs uppercase tracking-wider font-semibold text-slate-600 mb-2">Registro de movimientos</h4>
+                                  <div className="space-y-2">
+                                    {venta.movimientos.map((mov) => (
+                                      <div key={mov.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                        <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
+                                          <span className="font-semibold text-slate-700">{mov.tipo}</span>
+                                          <span>{formatDate(new Date(mov.createdAt))}</span>
+                                        </div>
+                                        <p className="text-sm text-slate-700 mt-1">{mov.resumen}</p>
+                                        <div className="text-xs text-slate-500 mt-1">
+                                          Total: {formatCurrency(mov.total)} · Pagado: {formatCurrency(mov.montoPagado)} · Debe: {formatCurrency(mov.deuda)}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -314,6 +459,89 @@ export default function VentasClient({ ventas }: { ventas: Venta[] }) {
           </table>
         </div>
       </div>
+
+      {returningVenta && (
+        <div className="fixed inset-0 z-[10000] bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-slate-900">Devolución parcial de venta</h3>
+              <button
+                onClick={() => setReturningVenta(null)}
+                className="text-slate-400 hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="px-6 py-4 space-y-3">
+              <p className="text-sm text-slate-600">
+                Selecciona cuántas unidades devolver por producto. Solo puedes devolver hasta la cantidad vendida.
+              </p>
+
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Producto</th>
+                      <th className="px-4 py-3 text-right">Vendidas</th>
+                      <th className="px-4 py-3 text-right">A devolver</th>
+                      <th className="px-4 py-3 text-right">Importe</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {returningVenta.detalles.map((det) => {
+                      const qty = Number(returnQtys[det.id] || 0)
+                      const safeQty = Number.isFinite(qty) ? qty : 0
+                      const cappedQty = Math.max(0, Math.min(det.cantidad, safeQty))
+                      return (
+                        <tr key={det.id}>
+                          <td className="px-4 py-3 font-medium text-slate-900">{det.producto?.nombre || 'Producto eliminado'}</td>
+                          <td className="px-4 py-3 text-right text-slate-600">{det.cantidad}</td>
+                          <td className="px-4 py-3 text-right">
+                            <input
+                              type="number"
+                              min={0}
+                              max={det.cantidad}
+                              step={1}
+                              value={cappedQty}
+                              onChange={(e) => {
+                                const next = Number(e.target.value)
+                                const normalized = Number.isFinite(next)
+                                  ? Math.max(0, Math.min(det.cantidad, Math.floor(next)))
+                                  : 0
+                                setReturnQtys((prev) => ({ ...prev, [det.id]: normalized }))
+                              }}
+                              className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-right"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                            {formatCurrency(cappedQty * det.precioUnitario)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setReturningVenta(null)}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handlePartialReturnSubmit}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+              >
+                Confirmar devolución parcial
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

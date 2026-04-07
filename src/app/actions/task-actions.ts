@@ -29,6 +29,7 @@ export async function addAction(projectId: string, formData: FormData): Promise<
   }
 
   revalidatePath(`/proyectos/${projectId}`);
+  revalidatePath("/calendario");
   return actionSuccess();
 }
 
@@ -43,6 +44,7 @@ export async function toggleAction(projectId: string, actionId: string, complete
   }
 
   revalidatePath(`/proyectos/${projectId}`);
+  revalidatePath("/calendario");
   return actionSuccess();
 }
 
@@ -56,5 +58,6 @@ export async function removeAction(projectId: string, actionId: string): Promise
   }
 
   revalidatePath(`/proyectos/${projectId}`);
+  revalidatePath("/calendario");
   return actionSuccess();
 }
