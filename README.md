@@ -2,6 +2,8 @@
 
 Aplicacion local para gestion de proyectos, contactos, compras, ventas y copias de seguridad.
 
+Guia paso a paso para Mac nuevo (M4): `MANUAL_INSTALACION_MAC_M4.md`
+
 ## Requisitos
 
 - Node.js 18+
